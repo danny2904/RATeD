@@ -64,7 +64,6 @@ wandb/
 
 # === GENERATED CONTENT ===
 reports/
-assets/
 
 # === TEMPORARY ===
 temp_*/
