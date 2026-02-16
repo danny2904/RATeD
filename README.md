@@ -32,7 +32,7 @@ By combining a localized backbone model (Phase 1) with an advanced LLM Judge (Ph
 The system operates on a **Confidence-Gating** mechanism to optimize for both latency and scientific rigor.
 
 <p align="center">
-  <img src="assets/architecture_academic.svg" alt="RATeD Architecture" width="850">
+  <img src="assets/architecture.png" alt="RATeD Architecture" width="850">
 </p>
 
 ### Technical Stack
