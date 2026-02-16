@@ -1,0 +1,78 @@
+# === SYSTEM & ENVIRONMENT ===
+.env
+.env.local
+.vscode/
+.idea/
+.agent/
+.gemini/
+.pytest_cache/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.ipynb_checkpoints/
+venv/
+.venv/
+env/
+
+# === DATA (file nặng) ===
+experiments/vietnamese/data/*.jsonl
+experiments/vietnamese/data/*.csv
+experiments/vietnamese/data/*.json
+experiments/english/data/*.jsonl
+experiments/english/data/*.csv
+experiments/english/data/*.json
+
+# === MODELS & CHECKPOINTS (CRITICAL - bỏ qua hết) ===
+*.pth
+*.pt
+*.bin
+*.safetensors
+*.ckpt
+*.h5
+*.onnx
+*.pb
+*.msgpack
+*.xz
+sentencepiece.bpe.model
+*.jar
+unsloth_compiled_cache/
+.cache/
+**/huggingface/
+**/huggingface_hub/
+experiments/vietnamese/models/
+experiments/english/models/
+experiments/english/output/
+experiments/english/output_multitask*/
+experiments/english/output_roberta/
+experiments/vietnamese/baseline/vncorenlp/models/
+experiments/vietnamese/baseline/vncorenlp/*.jar
+
+# === LOGS & RESULTS (file nặng) ===
+experiments/vietnamese/results/
+experiments/vietnamese/baseline/results/
+experiments/vietnamese/proposed/results/
+experiments/english/results/
+experiments/english/baseline/results/
+experiments/english/proposed/results/
+experiments/english/ablation_study/results/
+*.log
+*.output
+training_history.json
+test_output/
+wandb/
+
+# === GENERATED CONTENT ===
+reports/*.docx
+reports/*.xlsx
+reports/*.pdf
+reports/figures/
+assets/
+
+# === TEMPORARY ===
+temp_*/
+archive/
+
+# === SCRIPTS CÓ SECRET (giữ ignore) ===
+push_to_github.ps1
+upload_to_hf.ps1
