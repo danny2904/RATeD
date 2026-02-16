@@ -67,7 +67,6 @@ reports/*.docx
 reports/*.xlsx
 reports/*.pdf
 reports/figures/
-assets/
 
 # === TEMPORARY ===
 temp_*/
