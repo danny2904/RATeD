@@ -74,29 +74,6 @@ graph TD
    HF_TOKEN=your_huggingface_token_here
    ```
 
----
-
-## 🎯 Usage
-
-We provide localized entry-point scripts for an interactive research experience.
-
-### English Inference (HateXplain)
-```bash
-python infer_en.py
-```
-- **Option 1**: Full Cascaded Pipeline (Baseline 0.47 IoU + Gemini).
-- **Option 2**: Backbone Only (Stage 1) - Peak efficiency.
-- **Option 3**: Judge Only - Ablation study mode.
-
-### Vietnamese Inference (ViHOS)
-```bash
-python infer_vn.py
-```
-- Optimized for Vietnamese slang (teencode) and cultural nuances.
-- Uses the `vihos_e1_optimized` backbone and `qwen-specialist` judge.
-
----
-
 ## 🎨 Demo
 
 We provide a specialized web interface to visualize the **Explainability Heatmaps** and the **Cascaded Reasoning Flow**.
