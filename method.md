@@ -146,6 +146,16 @@ The influence of the gating threshold $\tau$ on the classification performance a
 
 *Figure 3: Influence of gating threshold $\tau$ on performance metrics (Accuracy, F1) and explainability (Span IoU/mF1) across Stage-2 inference.*
 
+### 4.4. Impact of Rationale Supervision Weight ($\alpha$)
+
+Trình bày trong Hình 4 là kết quả khảo sát tác động của trọng số giám sát rationale ($\alpha$) đối với tập dữ liệu English (HateXplain). Thử nghiệm này bóc tách cách mô hình multitask phản ứng khi thay đổi mức độ ưu tiên của việc trích xuất span so với phân loại câu.
+
+![Impact of Alpha](reports/figures/alpha_impact_en.png)
+
+*Figure 4: Impact of Rationale Supervision Weight $\alpha$ on classification macro-F1, explainability (IoU F1, Token F1), and bias (GMB-Subgroup AUC) for HateXplain.*
+
+Quan sát cho thấy giá trị $\alpha$ đóng vai trò quyết định trong việc kích hoạt khả năng giải thích của mô hình. Tại $\alpha=0$, mặc dù độ chính xác phân loại vẫn cao, nhưng mô hình gần như không thể trích xuất chính xác các bằng chứng độc hại (IoU F1 $\approx 0.02$). Khi tăng $\alpha$ lên các ngưỡng từ $10^{-1}$ đến $10^1$, chúng ta thấy sự cải thiện đột biến về các chỉ số explainability trong khi vẫn bảo toàn được tính ổn định của Macro F1 và khả năng giảm thiểu bias (GMB AUC). Dự án lựa chọn $\alpha=10$ làm tham số tiêu chuẩn để đạt được sự cân bằng tối ưu giữa các mục tiêu đa nhiệm.
+
 ### 5.4. Ablation Study
 
 Để đánh giá đóng góp độc lập của cấu trúc multitask và tầng xác thực phân tầng, chúng tôi thực hiện thử nghiệm bóc tách (Ablation Study) trên ba cấu hình. Độ chính xác (**Accuracy**) được báo cáo là chỉ số phân loại cấp độ câu (Sentence-level Classification) trên tập Test của hai tập dữ liệu:
@@ -164,7 +174,7 @@ Kết quả minh họa tại Hình 4 khẳng định rằng cách tiếp cận c
 
 ![Ablation Study](reports/figures/ablation_study.png)
 
-*Figure 4: Ablation study comparing the effectiveness of independent stages (Backbone vs. LLM) versus the proposed cascaded RATeD-V framework in term of Sentence-level Accuracy.*
+*Figure 5: Ablation study comparing the effectiveness of independent stages (Backbone vs. LLM) versus the proposed cascaded RATeD-V framework in term of Sentence-level Accuracy.*
 
 ---
 > [!IMPORTANT]
