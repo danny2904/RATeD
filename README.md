@@ -31,16 +31,9 @@ By combining a localized backbone model (Phase 1) with an advanced LLM Judge (Ph
 
 The system operates on a **Confidence-Gating** mechanism to optimize for both latency and scientific rigor.
 
-```mermaid
-graph TD
-    A[Input Text] --> B{Stage 1: RATeD Backbone}
-    B -- High Confidence Path --> C[Instant Prediction + Rationale]
-    B -- Low Confidence Gate --> D[Stage 2: LLM Judge]
-    D -- Gemini / Qwen Specialist --> E[Verification & Rationale Fusion]
-    C --> F[Final Report]
-    E --> F
-    F --> G[Explainability Metrics: IoU, Token F1, Faithfulness]
-```
+<p align="center">
+  <img src="assets/architecture_academic.svg" alt="RATeD Architecture" width="850px">
+</p>
 
 ### Technical Stack
 - **Languages**: Python 3.10+
