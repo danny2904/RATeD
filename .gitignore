@@ -63,10 +63,8 @@ test_output/
 wandb/
 
 # === GENERATED CONTENT ===
-reports/*.docx
-reports/*.xlsx
-reports/*.pdf
-reports/figures/
+reports/
+assets/
 
 # === TEMPORARY ===
 temp_*/
