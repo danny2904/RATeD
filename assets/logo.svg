@@ -24,9 +24,7 @@
     <line x1="60" y1="60" x2="75" y2="75" stroke="#22d3ee" stroke-width="6" stroke-linecap="round"/>
     
     <!-- Neural Node in circle -->
-    <circle cx="45" cy="45" r="5" fill="#818cf8">
-      <animate attributeName="opacity" values="0.4;1;0.4" dur="2s" repeatCount="indefinite" />
-    </circle>
+    <circle cx="45" cy="45" r="5" fill="#818cf8" />
   </g>
   
   <!-- Text Section -->
