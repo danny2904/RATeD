@@ -128,19 +128,19 @@ python infer_vn.py
 Our Cascaded Framework achieves state-of-the-art performance in both classification accuracy and rationale plausibility.
 
 ### English (HateXplain)
-| Metric           | Backbone (E1) | Cascaded (E11) | Delta |
-| :--------------- | :-----------: | :------------: | :---: |
-| **Accuracy**     |     0.672     |   **0.681**    | +0.9% |
-| **F1-Macro**     |     0.658     |   **0.665**    | +0.7% |
-| **Span IoU F1**  |     0.442     |   **0.474**    | +3.2% |
-| **Faithfulness** |     0.481     |   **0.529**    | +4.8% |
+| Metric           | Backbone | Cascaded  | Delta |
+| :--------------- | :------: | :-------: | :---: |
+| **Accuracy**     |  0.672   | **0.681** | +0.9% |
+| **F1-Macro**     |  0.658   | **0.665** | +0.7% |
+| **Span IoU F1**  |  0.442   | **0.474** | +3.2% |
+| **Faithfulness** |  0.481   | **0.529** | +4.8% |
 
 ### Vietnamese (ViHOS)
-| Metric        | Backbone (E1) | Cascaded (E11) | Delta |
-| :------------ | :-----------: | :------------: | :---: |
-| **Accuracy**  |     0.914     |   **0.939**    | +2.5% |
-| **F1-Macro**  |     0.912     |   **0.938**    | +2.6% |
-| **Token MF1** |     0.824     |   **0.866**    | +4.2% |
+| Metric        | Backbone | Cascaded  | Delta |
+| :------------ | :------: | :-------: | :---: |
+| **Accuracy**  |  0.914   | **0.939** | +2.5% |
+| **F1-Macro**  |  0.912   | **0.938** | +2.6% |
+| **Token MF1** |  0.824   | **0.866** | +4.2% |
 
 ---
 
