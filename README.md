@@ -150,7 +150,7 @@ python infer_vn.py
 
 Our Cascaded Framework achieves state-of-the-art performance in both classification accuracy and rationale plausibility.
 
-### 🇬🇧 English (HateXplain)
+### English (HateXplain)
 | Metric           | Backbone (E1) | Cascaded (E11) | Delta |
 | :--------------- | :-----------: | :------------: | :---: |
 | **Accuracy**     |     0.672     |   **0.681**    | +0.9% |
@@ -158,7 +158,7 @@ Our Cascaded Framework achieves state-of-the-art performance in both classificat
 | **Span IoU F1**  |     0.442     |   **0.474**    | +3.2% |
 | **Faithfulness** |     0.481     |   **0.529**    | +4.8% |
 
-### 🇻🇳 Vietnamese (ViHOS)
+### Vietnamese (ViHOS)
 | Metric        | Backbone (E1) | Cascaded (E11) | Delta |
 | :------------ | :-----------: | :------------: | :---: |
 | **Accuracy**  |     0.914     |   **0.939**    | +2.5% |
