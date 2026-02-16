@@ -150,13 +150,13 @@ Our Cascaded Framework achieves state-of-the-art performance in both classificat
 RATeD/
 ├── experiments/
 │   ├── english/
-│   │   ├── baseline/      # Comparative baseline models (RoBERTa, mBERT)
-│   │   ├── proposed/      # SOTA Cascaded logic & Training scripts
-│   │   └── data/          # Prepared datasets (HateXplain)
+│   │   ├── baseline/      # Comparative baseline models
+│   │   ├── proposed/      # Cascaded logic & Training scripts
+│   │   └── data/          # Prepared datasets
 │   └── vietnamese/
-│       ├── proposed/      # Vietnamese SOTA implementation
+│       ├── proposed/      # Vietnamese implementation
 │       ├── models/        # Fine-tuned checkpoints
-│       └── data/          # Prepared datasets (ViHOS)
+│       └── data/          # Prepared datasets
 ├── reports/               # Generated metrics, logs, and visualization figures
 ├── infer_en.py            # Main entry point for English Research
 ├── infer_vn.py            # Main entry point for Vietnamese Research
