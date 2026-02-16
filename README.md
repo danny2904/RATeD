@@ -129,11 +129,20 @@ The `infer_en.py` and `infer_vn.py` scripts are designed for researchers to perf
 2. **Stage 1 Only (Backbone)**: Evaluates only the Discriminative model. Best for benching raw speed and baseline multitask performance.
 3. **Stage 2 Only (Judge)**: An ablation mode that bypasses the backbone and sends all data to the LLM. Useful for measuring the "Knowledge Gap" between small models and LLMs.
 
-### Example: Running Batch Evaluation
-To run the full English test set (1924 samples) with Gemini 2.5 Flash Lite:
+### Quick Start (Interactive Menu)
+To run a batch evaluation on the full test sets, simply use our interactive CLI tools:
+
+#### English (HateXplain)
 ```bash
-python experiments/english/proposed/04_cascaded_verify_en.py --provider gemini --model_path experiments/english/baseline/results/RATeD_E1_baseline/best_model.pth
+python infer_en.py
 ```
+*Follow the on-screen menu to select **Mode 1 (Cascaded)** and **Gemini** to reproduce the 0.47 IoU results.*
+
+#### Vietnamese (ViHOS)
+```bash
+python infer_vn.py
+```
+*Select **Mode 1 (Cascaded)** and **Qwen Specialist** to achieve 0.939 Accuracy.*
 
 ---
 
