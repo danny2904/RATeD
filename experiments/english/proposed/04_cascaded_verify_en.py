@@ -256,17 +256,12 @@ class RATeDInferenceEN:
 
 # --- Shared Judge Prompt Logic + Từ điển slang  ---
 ENGLISH_SLANG_KB = """
-GROUP 1: HATE (IDENTITY-BASED ATTACK)
-- STRICT CRITERIA: Text that targets, dehumanizes, or promotes violence against protected groups (Race, Religion, Sexual Orientation, Disability).
-- SLURS: Includes identity-based slurs used to attack or marginalize.
-- DEHUMANIZATION: Using metaphors comparing groups to vermin, animals, or diseases.
-
-GROUP 2: OFFENSIVE (GENERAL TOXICITY)
-- CRITERIA: Swearing, profanity, or insults that DO NOT target a specific protected identity.
-- EXAMPLES: General insults, aggressive non-identity-based language, or profanity used for emphasis.
-
-GROUP 3: NORMAL (SAFE CONTENT)
-- CATEGORIES: Neutral descriptions, reclaimed terms in casual context, or safe conversational text.
+LINGUISTIC & CULTURAL CONTEXT:
+- Identity-based terms: Terms used to refer to individuals based on protected identities (Race, Religion, Disability, etc.). Impact depends on the intent of dehumanization or exclusion.
+- Dehumanizing metaphors: Comparative language (e.g., comparing groups to animals or waste) often used to marginalize specific communities.
+- Non-identity-based toxicity: General profanity or insulting language used for non-specific aggression or emphasis.
+- Reclaimed language: Terms that may be offensive in general use but are used neutrally or casually within certain social groups (e.g., AAE).
+- Neutral identity markers: Descriptive terms for groups used in non-toxic, informative, or conversational contexts.
 """
 
 def get_slang_kb_en():
