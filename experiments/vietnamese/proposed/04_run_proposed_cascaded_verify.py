@@ -39,17 +39,13 @@ import ast
 
 # --- Context / Knowledge Knowledge Base (Teencode/Slang) ---
 VIETNAMESE_SLANG_KB = """
-LƯU Ý ĐẶC BIỆT VỀ TỪ LÓNG VIỆT NAM (TEENCODE):
-1. 'má', 'mẹ', 'bà': 
-   - Nếu dùng để gọi người thân hoặc cảm thán nhẹ ("má ơi", "mẹ nó", "bà già"): KHÔNG PHẢI HATE (SAFE).
-   - Nếu chửi thề trực tiếp ("đ* má", "con mẹ mày", "mẹ kiếp"): LÀ HATE (TOXIC).
-2. 'đồ', 'hàng':
-   - Nếu chỉ vật dụng ("đồ chơi", "hàng hóa"): SAFE.
-   - Nếu miệt thị ("đồ ngu", "con hàng", "đồ chó"): TOXIC.
-3. 'đồng bóng', 'pđ', 'bede', 'bóng cái': Từ lóng miệt thị giới tính (LGBT): TOXIC (HATE).
-4. 'bug', 'lag', 'hack': Thuật ngữ game/công nghệ: SAFE.
-5. 'phò', 'cave', 'đi khách': Miệt thị phụ nữ hoặc nghề nghiệp nhạy cảm: TOXIC.
-6. 'bắc kỳ', 'nam kỳ', 'ba que', 'bò đỏ': Từ phân biệt vùng miền/chính trị cực đoan: TOXIC.
+NGỮ CẢNH NGÔN NGỮ & VĂN HÓA (VIỆT NAM):
+1. Từ chỉ quan hệ gia đình (má, mẹ, bà...): Thường dùng để chỉ người thân hoặc cảm thán, nhưng có thể xuất hiện trong các cấu trúc xúc phạm tùy vào ngữ cảnh đi kèm.
+2. Từ chỉ vật dụng (đồ, hàng...): Có thể chỉ vật dụng thông thường hoặc được dùng như tiền tố/danh từ miệt thị cá nhân tùy thuộc vào từ bổ trợ.
+3. Thuật ngữ liên quan đến giới tính và cộng đồng LGBT+: Một số thuật ngữ lóng mang sắc thái nhạy cảm hoặc miệt thị cao trong các tranh luận tiêu cực.
+4. Thuật ngữ công nghệ/game (bug, lag, hack...): Thường mang tính trung tính trong bối cảnh kỹ thuật hoặc trò chơi điện tử.
+5. Từ ngữ liên quan đến giới tính hoặc nghề nghiệp nhạy cảm: Một số danh từ mang tính kỳ thị cao khi được dùng để tấn công nhân phẩm cá nhân.
+6. Từ ngữ liên quan đến nguồn gốc địa lý hoặc quan điểm chính trị: Các thuật ngữ lóng liên quan đến các chủ đề này thường dẫn đến các xung đột giao tiếp thù ghét.
 """
 
 # --- METRIC FUNCTIONS REMOVED (Now imported from common/metrics.py) ---
