@@ -256,21 +256,17 @@ class RATeDInferenceEN:
 
 # --- Shared Judge Prompt Logic + Từ điển slang  ---
 ENGLISH_SLANG_KB = """
-GROUP 1: HATE (EXTREME TARGETED DEHUMANIZATION)
-- STRICT CRITERIA: Must target a PROTECTED GROUP (Race, Religion, Sexual Orientation, Disability) AND use dehumanizing metaphors or violent threats.
-- SLURS: Only "nigger", "kike", "paki", "coon", "spic", "chink" when used to attack.
-- METAPHORS: "vermin", "cockroaches", "animals", "parasites", "virus", "shithole" (targeting groups).
+GROUP 1: HATE (IDENTITY-BASED ATTACK)
+- STRICT CRITERIA: Text that targets, dehumanizes, or promotes violence against protected groups (Race, Religion, Sexual Orientation, Disability).
+- SLURS: Includes identity-based slurs used to attack or marginalize.
+- DEHUMANIZATION: Using metaphors comparing groups to vermin, animals, or diseases.
 
-GROUP 2: OFFENSIVE (GENERAL TOXICITY & INSULTS)
-- ALL OTHER TOXICITY: Any insult, profanity, or aggressive language that does NOT target a protected identity group specifically.
-- INSULTS: "retard", "idiot", "stupid", "pos", "asshole", "trash", "clown", "dumbass", "bitch", "hoe", "cunt".
-- AGGRESSIVE: "stfu", "fucking hate you", "get out".
-- THEME: "illegal immigrants", "moslem terrorist" (label as OFFENSIVE unless extreme dehumanization is present).
+GROUP 2: OFFENSIVE (GENERAL TOXICITY)
+- CRITERIA: Swearing, profanity, or insults that DO NOT target a specific protected identity.
+- EXAMPLES: General insults, aggressive non-identity-based language, or profanity used for emphasis.
 
-GROUP 3: NORMAL (SAFE & DESCRIPTIVE)
-- RECLAIMED: "nigga" (casual AAE).
-- NEUTRAL: Descriptive identity words used without malice.
-- EMPHASIS: "fucking love this", "holy shit".
+GROUP 3: NORMAL (SAFE CONTENT)
+- CATEGORIES: Neutral descriptions, reclaimed terms in casual context, or safe conversational text.
 """
 
 def get_slang_kb_en():
@@ -365,69 +361,93 @@ class LocalJudgeEN:
 
     def clean_judge_output(self, raw_output, max_span_length=120, text=None):
         import re
+        # Initialize with a safe default. In Stage 2 Cascaded, 
+        # defaulting to 'normal' is safer for FP control.
         label, spans, hallucination_detected = "normal", [], False
+        
+        # 0. Precise Assistant output extraction for Qwen/ChatML
         clean_ans = raw_output
-        if "assistant\n" in raw_output:
+        if "<|im_start|>assistant" in raw_output:
+            clean_ans = raw_output.split("<|im_start|>assistant")[-1].strip()
+        elif "assistant\n" in raw_output:
             clean_ans = raw_output.split("assistant\n")[-1].strip()
+        
+        # Remove any lingering im_end or turn markers
+        clean_ans = clean_ans.split("<|im_end|>")[0].strip()
+
         try:
-            # Flexible regex to capture hate/hatespeech/offensive/normal
-            label_match = re.search(r"LABEL:\s*(hate|hatespeech|offensive|normal)", clean_ans, re.IGNORECASE)
+            # 1. Primary: Strict LABEL Extraction (Start of line prioritize)
+            label_match = re.search(r"^LABEL:\s*\*?(hate|hatespeech|offensive|normal)\*?", clean_ans, re.MULTILINE | re.IGNORECASE)
+            if not label_match:
+                label_match = re.search(r"LABEL:\s*\*?(hate|hatespeech|offensive|normal)\*?", clean_ans, re.IGNORECASE)
+            
             if label_match: 
-                label = label_match.group(1).lower()
-                if label == "hatespeech": label = "hate"
+                label = label_match.group(1).lower().replace("hatespeech", "hate")
             else:
-                kw_match = re.search(r"\b(hate|hatespeech|offensive|normal)\b", clean_ans, re.IGNORECASE)
-                if kw_match:
-                    label = kw_match.group(1).lower()
-                    if label == "hatespeech": label = "hate"
-                else:
+                # 2. Fallback: Keyword search with specific priority (Favor Toxic classes)
+                if re.search(r"\bhate(speech)?\b", clean_ans, re.IGNORECASE):
+                    label = "hate"
+                elif re.search(r"\boffensive\b", clean_ans, re.IGNORECASE):
+                    label = "offensive"
+                elif re.search(r"\bnormal\b", clean_ans, re.IGNORECASE):
                     label = "normal"
             
+            # 2. SPANS Extraction
             spans_match = re.search(r"SPANS:\s*([^\n\r]*)", clean_ans, re.IGNORECASE)
             if spans_match:
                 spans_text = spans_match.group(1).strip()
                 if "NONE" not in spans_text.upper() and spans_text:
-                    raw_spans = [s.strip() for s in spans_text.split(',')]
+                    # Capture comma-separated spans
+                    raw_spans = [s.strip().strip('"').strip("'") for s in spans_text.split(',')]
                     for span in raw_spans:
-                        span = span.strip().strip('"').strip("'")
                         if span and len(span) >= 2 and len(span) <= max_span_length:
                             spans.append(span)
-            spans = sorted(list(set(spans)), key=len)[:2]
-        except: hallucination_detected = True
+            
+            # De-duplicate and limit to keep rationales precise
+            spans = sorted(list(set(spans)), key=len)[:3]
+            
+        except Exception as e:
+            print(f"[DEBUG] Parser Error: {e}")
+            hallucination_detected = True
+            
         return label, spans, hallucination_detected
     
     def verify_batch(self, texts):
         if not texts: return []
         slang_kb = get_slang_kb_en()
-        instruction = f"""You are a content moderator specializing in detecting hate speech for the HateXplain 3-class task.
-You must follow the MINIMAL RATIONALE philosophy: Only extract the smallest set of tokens that make the text toxic. Topic words (e.g., 'Immigrants', 'Refugees', 'Jews') are NOT toxic unless directly used as part of a slur.
+        
+        instruction = f"""You are a Senior NLP Research Scientist. Task: Classify text into HATE, OFFENSIVE, or NORMAL.
 
 {slang_kb}
 
-STRICT RULES:
-1. OUTPUT FORMAT: Exactly 3 lines.
-LABEL: <hate|offensive|normal>
-SPANS: <comma-separated minimal spans, or NONE>
-REASONING: <1 short sentence>
-2. MINIMALITY: 
-   - Extract ONLY specific slurs, insults, or violent threats.
-   - ANTI-TOPIC RULE: Never include words like 'immigrants', 'refugees', 'blacks', 'whites', 'jews', 'muslims' etc., in the SPANS unless they are used as part of a compound slur.
+DEFINITIONS:
+- HATE: Attacks/dehumanizes protected groups (Race, Religion, etc.). 
+- OFFENSIVE: General insults/profanity WITHOUT targeting protected identity.
+- NORMAL: Safe content.
 
-Example:
-Text: "Those immigrants are cockroaches."
-LABEL: hate
-SPANS: cockroaches
-REASONING: Only the dehumanizing slur "cockroaches" is extracted."""
-        
-        prompt_template = """<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"""
+STRICT RULE: If a slur is used against a group, it MUST be HATE.
+
+EXAMPLES:
+1. "I hate those [Group Name] they are subhuman" -> LABEL: hate
+2. "You are such a fucking idiot" -> LABEL: offensive
+3. "The weather is nice" -> LABEL: normal
+
+OUTPUT FORMAT (3 lines):
+LABEL: <hate|offensive|normal>
+SPANS: <comma-separated triggers or NONE>
+REASONING: <1 short sentence>"""
+
+        # Reverting to ChatML (standard Qwen Instruct format)
+        prompt_template = "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
         formatted_inputs = [prompt_template.format(instruction, t) for t in texts]
+        
         try:
             inputs = self.tokenizer(formatted_inputs, return_tensors="pt", padding=True, truncation=True, max_length=512)
             inputs = inputs.to(self.device)
             with torch.no_grad():
                 outputs = self.model.generate(
                     **inputs,
-                    max_new_tokens=128,
+                    max_new_tokens=100,
                     do_sample=False,
                     use_cache=True,
                     pad_token_id=self.tokenizer.pad_token_id,
@@ -591,22 +611,24 @@ class CascadedPipelineEN:
                 if self.only_stage1:
                     is_judge_needed = False
                 else:
-                    # Phase 11.1: Restored Gating (0.45 - 0.98) - Matched with 0.48 run profile
-                    is_judge_needed = (0.45 <= confidence <= 0.98)
+                    # Phase 11.5: Tightened Gating (0.40 - 0.65) for English
+                    # Since Judge Qwen EN has safety bias, we only let it handle low-confidence cases.
+                    is_judge_needed = (0.40 <= confidence <= 0.65)
 
                 if not is_judge_needed:
                     self.stats["fast_path"] += 1
+                    # Ensure alignment with LABELS_EN (0:hate, 1:normal, 2:offensive)
                     if r_res['cls_label'] == 1:
-                        label = "normal"
+                        lbl = "normal"
                     elif r_res['cls_label'] == 0:
-                        label = "hate"
+                        lbl = "hate"
                     else:
-                        label = "offensive"
+                        lbl = "offensive"
                         
                     final_results[i] = {
-                        "label": label,
+                        "label": lbl,
                         "spans": r_res['spans'],
-                        "token_mask": r_res['token_mask'], # Phase 10.3
+                        "token_mask": r_res['token_mask'],
                         "flow": "FAST_PATH",
                         "confidence": confidence,
                         "cls_probs": r_res.get('cls_probs', []),
@@ -655,7 +677,9 @@ class CascadedPipelineEN:
                     }
                     continue
                 
-                # VN-style: judge_label None = toxic, dùng nhãn RATeD (hate/offensive)
+                # Phase 11.2: EN-Specific Protective Gating
+                # Stage 1 (Backbone) is strong (Recall 77% for HATE).
+                # Judge Qwen Specialist is weak on HATE (~10% recall).
                 if judge_label is None:
                     final_label = "hate" if orig_label_idx == 0 else "offensive"
                 else:
@@ -664,14 +688,22 @@ class CascadedPipelineEN:
                 orig_conf = rated_results[idx]['confidence']
                 is_normal_rated = (orig_label_idx == 1)
                 is_toxic_rated = not is_normal_rated
-                if is_toxic_rated and orig_conf >= self.safeguard_threshold and final_label == "normal":
+                
+                # Rule A: Prevent HATE -> Offensive/Normal downgrade if backbone is confident
+                if orig_label_idx == 0 and orig_conf >= 0.70 and final_label != "hate":
+                    final_label = "hate"
+                    self.stats["safeguard_overrides"] += 1
+                
+                # Rule B: Standard Safeguard (Prevent flip to Normal if backbone is confident)
+                elif is_toxic_rated and orig_conf >= self.safeguard_threshold and final_label == "normal":
                     final_label = "hate" if orig_label_idx == 0 else "offensive"
                     self.stats["safeguard_overrides"] += 1
                 
-                is_normal_judge = (final_label == "normal")
-                if is_normal_rated and not is_normal_judge:
+                # Update stats
+                is_normal_final = (final_label == "normal")
+                if is_normal_rated and not is_normal_final:
                     self.stats["fn_recovered"] += 1
-                elif not is_normal_rated and is_normal_judge:
+                elif not is_normal_rated and is_normal_final:
                     self.stats["fp_saved"] += 1
 
                 # Phase 11.2: Rationale Fusion - UNION strategy (Backbone + Judge) for max Plausibility (Target 0.48)
@@ -691,29 +723,45 @@ class CascadedPipelineEN:
                     token_mask_for_group3 = [0] * 128
                     cleaned_spans = []
 
-                # Prepare final scores for AUROC (Phase 11: specific for Stage 2 ablation)
-                final_probs = rated_results[idx].get('cls_probs', [])
-                final_conf = rated_results[idx]['confidence']
-                final_token_probs = rated_results[idx].get('token_probs', [])
+                # Phase 11.3: Update soft probabilities to reflect Judge's final decision
+                # This ensures AUROC and Fairness metrics (Group 2) capture the Stage 2 impact.
+                if final_label == "hate":
+                    final_probs = [1.0, 0.0, 0.0]
+                    final_conf = 1.0
+                elif final_label == "offensive":
+                    final_probs = [0.0, 0.0, 1.0]
+                    final_conf = 1.0
+                else: # normal
+                    final_probs = [0.0, 1.0, 0.0]
+                    final_conf = 0.0
+                
+                # Phase 11.4: Rationale-Informed Probability Calibration
+                # We fuse Backbone's soft scores with Judge's hard mask 
+                # so that Token AUPRC reflects the Stage 2 refinement.
+                fused_token_probs = []
+                backbone_token_probs = rated_results[idx].get('token_probs', [])
+                
+                # We need judge_mask (binary) for calibration
+                j_mask = build_span_token_mask(text_for_idx, cleaned_spans, self.rated.tokenizer, max_len=128) if cleaned_spans else [0]*128
 
-                if self.only_stage2:
-                    # Map Judge Output to Hard Probabilities [Hate, Normal, Offensive]
-                    if final_label == "hate":
-                        final_probs = [1.0, 0.0, 0.0]
-                        final_conf = 1.0
-                    elif final_label == "offensive":
-                        final_probs = [0.0, 0.0, 1.0]
-                        final_conf = 1.0
-                    else:
-                        final_probs = [0.0, 1.0, 0.0]
-                        final_conf = 0.0
+                for i in range(len(backbone_token_probs)):
+                    b_safe, b_toxic = backbone_token_probs[i]
+                    j_val = float(j_mask[i]) if i < len(j_mask) else 0.0
                     
-                    # Also populate token_probs for Span AUPRC independence
-                    judge_mask = build_span_token_mask(text_for_idx, cleaned_spans, self.rated.tokenizer, max_len=128)
-                    final_token_probs = []
-                    for val in judge_mask:
-                        # 2 classes: Safe[0], Toxic[1]. If toxic (1), probs = [0, 1]
-                        final_token_probs.append([1.0-val, float(val)])
+                    if final_label == "normal":
+                        # If Judge says Normal, we suppress toxicity across all tokens
+                        new_toxic = 0.0
+                    else:
+                        # If Judge says Toxic (Hate/Offensive), we anchor probabilities to Judge's mask
+                        if j_val > 0.5:
+                            new_toxic = max(b_toxic, 0.99) # Judge-confirmed toxic spans get top scores
+                        else:
+                            new_toxic = b_toxic * 0.2 # Suppress tokens outside Judge's focus
+                    
+                    new_safe = 1.0 - new_toxic
+                    fused_token_probs.append([new_safe, new_toxic])
+                
+                final_token_probs = fused_token_probs
 
                 final_results[idx] = {
                     "label": final_label,
