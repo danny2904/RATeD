@@ -84,5 +84,6 @@ experiments/english/proposed/05_prepare_sft_data_en.py
 experiments/english/proposed/06_sft_qwen_hatexplain.py
 experiments/english/proposed/07_alpha_sweep_en.py
 experiments/english/proposed/08_generate_silver_rationales_en.py
+experiments/english/proposed/model_multitask_en.py
 method.md
 experiments/english/ablation_study/
