@@ -87,3 +87,9 @@ experiments/english/proposed/08_generate_silver_rationales_en.py
 experiments/english/proposed/model_multitask_en.py
 method.md
 experiments/english/ablation_study/
+experiments/vietnamese/proposed/05_prepare_sft_data.py
+experiments/vietnamese/proposed/06_sft_qwen_vihos.py
+experiments/vietnamese/proposed/analyze_errors.py
+experiments/vietnamese/proposed/config_loader.py
+experiments/vietnamese/proposed/model_multitask.py
+experiments/vietnamese/proposed/pipeline.py
