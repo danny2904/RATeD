@@ -77,6 +77,5 @@ upload_to_hf.ps1
 **/*_bak_v*.py
 
 # === SPECIFIC EXPERIMENT SCRIPTS TO IGNORE ===
-experiments/english/proposed/04_cascaded_verify_en.py
 method.md
 experiments/english/ablation_study/

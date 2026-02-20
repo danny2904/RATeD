@@ -66,6 +66,20 @@ class HateXplainMultiTaskDataset(Dataset):
                         self.data.append(item)
         except Exception as e:
             logging.error(f"Error loading data: {e}")
+        
+        # Phase 12: Load Silver Rationales (LLM Distillation)
+        self.silver_map = {}
+        silver_path = getattr(tokenizer, 'silver_path', None) # Passing via tokenizer attribute for simplicity in this prototype
+        if silver_path and os.path.exists(silver_path):
+            try:
+                with open(silver_path, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        s_item = json.loads(line)
+                        self.silver_map[str(s_item['id'])] = s_item['silver_spans']
+                logging.info(f"Loaded {len(self.silver_map)} silver rationales for distillation.")
+            except Exception as e:
+                logging.warning(f"Could not load silver rationales: {e}")
+
         self.tokenizer = tokenizer
         self.max_len = max_len
         self.label_map = {"hatespeech": 0, "normal": 1, "offensive": 2}
@@ -140,11 +154,27 @@ class HateXplainMultiTaskDataset(Dataset):
                             if i < self.max_len:
                                 token_labels[i] = 2
 
+        # Prepare Silver Labels for Distillation
+        silver_mask = torch.zeros(self.max_len, dtype=torch.float)
+        item_id = str(item.get('id', ''))
+        if item_id in self.silver_map:
+            silver_spans = self.silver_map[item_id]
+            for span in silver_spans:
+                if not span: continue
+                span_tokens = self.tokenizer.tokenize(span)
+                span_ids = self.tokenizer.convert_tokens_to_ids(span_tokens)
+                start_idx = self.find_sublist(span_ids, input_ids.tolist())
+                if start_idx != -1:
+                    for i in range(start_idx, start_idx + len(span_ids)):
+                        if i < self.max_len:
+                            silver_mask[i] = 1.0
+
         return {
             'input_ids': input_ids,
             'attention_mask': attention_mask,
             'labels': torch.tensor(label_id, dtype=torch.long),
-            'token_labels': token_labels
+            'token_labels': token_labels,
+            'silver_labels': silver_mask
         }
 
 def train(args):
@@ -164,6 +194,7 @@ def train(args):
     logging.info("Using device: %s (n_gpu=%d)", device, n_gpu)
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
+    tokenizer.silver_path = args.silver_path # Pass silver rationale path to dataset
     gold_style = getattr(args, 'gold_style', 'unsafe_spans_indices')
 
     # Khớp 03_evaluate_en: cùng data_path, max_len (128), label_map, gold_style=unsafe_spans_indices
@@ -196,6 +227,7 @@ def train(args):
             attention_mask = batch['attention_mask'].to(device)
             labels = batch['labels'].to(device)
             token_labels = batch['token_labels'].to(device)
+            silver_labels = batch['silver_labels'].to(device)
             
             model.zero_grad()
             outputs = model(
@@ -205,7 +237,9 @@ def train(args):
                 token_labels=token_labels,
                 alpha=args.alpha,
                 use_consistency=args.use_consistency,
-                lambda_const=args.lambda_const
+                lambda_const=args.lambda_const,
+                silver_labels=silver_labels,
+                beta_attn=args.beta_attn
             )
             
             loss = outputs['loss']
@@ -278,6 +312,8 @@ if __name__ == "__main__":
                         help="Gold token labels: unsafe_spans_indices (eval 03 ra Span IoU cao) | spans (find_sublist)")
     parser.add_argument("--n_gpu", type=int, default=None,
                         help="Số GPU dùng (DataParallel). Mặc định: tất cả GPU nvidia-smi thấy. Ví dụ: 2")
+    parser.add_argument("--beta_attn", type=float, default=0.0, help="Weight for Attention Guidance loss (Distillation from LLM).")
+    parser.add_argument("--silver_path", type=str, default=None, help="Path to LLM-generated silver rationales JSONL.")
     args = parser.parse_args()
     args.use_fusion = bool(args.use_fusion)
     args.use_consistency = bool(args.use_consistency)

@@ -38,7 +38,9 @@ class HateXplainMultiTaskBIO(RobertaPreTrainedModel):
         token_labels=None, # Token-level labels (0=normal, 1=B, 2=I)
         alpha=1.0,          # Weight for Token Loss
         use_consistency=True,
-        lambda_const=0.1
+        lambda_const=0.1,
+        silver_labels=None,  # Silver rationales from LLM (Batch, Seq_Len)
+        beta_attn=0.5        # Weight for Attention Guidance (Distillation)
     ):
         
         outputs = self.roberta(
@@ -112,7 +114,23 @@ class HateXplainMultiTaskBIO(RobertaPreTrainedModel):
                     clean_toxic_probs = t_probs[clean_mask].squeeze(-1) # (Num_Clean, Seq_Len)
                     loss_consistency = torch.mean(clean_toxic_probs)
                     total_loss += (lambda_const * loss_consistency)
-            
+
+            # --- Phase 12: Attention Guidance (LLM Distillation) ---
+            if silver_labels is not None and beta_attn > 0:
+                # current toxic_probs: (Batch, Seq_Len, 1) or (Batch, Seq_Len)
+                # We want to match LLM's silver mask
+                # Normalize toxic_probs along sequence length to treat as attention
+                model_attn = t_probs.squeeze(-1) # (Batch, Seq_Len)
+                
+                # KL Divergence between Silver Mask (Distribution) and Model Attn
+                # Use a simple MSE or CrossEntropy if silver labels are 0/1
+                # Here we use BinaryCrossEntropy to match the probability of each token being toxic
+                loss_fct_attn = nn.BCELoss(reduction='mean')
+                # Filter indices that are not -100
+                mask = (token_labels != -100).float()
+                loss_attn = loss_fct_attn(model_attn * mask, silver_labels.float() * mask)
+                
+                total_loss += (beta_attn * loss_attn)
         return {
             'loss': total_loss,
             'cls_logits': cls_logits,
