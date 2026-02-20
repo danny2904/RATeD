@@ -72,3 +72,11 @@ archive/
 # === SCRIPTS CÓ SECRET (giữ ignore) ===
 push_to_github.ps1
 upload_to_hf.ps1
+
+# === BACKUPS ===
+**/*_bak_v*.py
+
+# === SPECIFIC EXPERIMENT SCRIPTS TO IGNORE ===
+experiments/english/proposed/04_cascaded_verify_en.py
+method.md
+experiments/english/ablation_study/
