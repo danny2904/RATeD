@@ -1,0 +1,309 @@
+import os
+import sys
+import torch
+import json
+import numpy as np
+import argparse
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from tqdm import tqdm
+import warnings
+from transformers import logging as hf_logging
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+hf_logging.set_verbosity_error()
+warnings.filterwarnings("ignore")
+from transformers import AutoTokenizer
+from torch.utils.data import DataLoader, Dataset
+from dotenv import load_dotenv
+import google.generativeai as genai
+
+# Add path to import local modules
+current_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(current_dir)
+from model_multitask_en import HateXplainMultiTaskBIO
+
+# Add path to project root for absolute imports
+project_root = os.path.abspath(os.path.join(current_dir, "..", "..", ".."))
+if project_root not in sys.path: sys.path.insert(0, project_root)
+
+try:
+    from experiments.english.common.metrics import calculate_span_f1_eraser, calculate_token_metrics, calculate_auroc, calculate_bias_metrics
+    from experiments.english.common.faithfulness import calculate_faithfulness_metrics
+    from experiments.english.common.metrics_utils import load_bias_metadata_from_prepared
+    from experiments.english.common.reporting import generate_report_string
+except ImportError as e:
+    print(f"[ERR] Import Error: {e}")
+
+LABELS_EN = ("hate", "normal", "offensive") 
+
+def merge_span_indices(spans):
+    if not spans: return []
+    out = []
+    for s in spans:
+        a, b = int(s[0]), int(s[1])
+        if a < b: out.append([a, b])
+    out.sort(key=lambda x: (x[0], x[1]))
+    merged = []
+    for a, b in out:
+        if merged and a <= merged[-1][1] + 1:
+            merged[-1][1] = max(merged[-1][1], b)
+        else:
+            merged.append([a, b])
+    return merged
+
+def spans_string_to_indices(text, span_strings, merge=True):
+    if not text or not span_strings: return []
+    indices = []
+    for s in span_strings:
+        s = (s or "").strip().strip('"\'')
+        if not s: continue
+        start_search = 0
+        while True:
+            pos = text.lower().find(s.lower(), start_search)
+            if pos == -1: break
+            indices.append([pos, pos + len(s)])
+            start_search = pos + 1
+    if merge: indices = merge_span_indices(indices)
+    return indices
+
+def build_span_token_mask(text, span_list, tokenizer, max_len=128):
+    if not text or not span_list: return [0] * max_len
+    encoding = tokenizer(text, max_length=max_len, padding="max_length", truncation=True, return_offsets_mapping=True)
+    offsets, mask = encoding["offset_mapping"], [0] * max_len
+    for span in span_list:
+        if not span or str(span).lower() == "none": continue
+        start_search = 0
+        while True:
+            pos = text.lower().find(span.lower(), start_search)
+            if pos == -1: break
+            end = pos + len(span)
+            for i in range(min(max_len, len(offsets))):
+                if max(pos, offsets[i][0]) < min(end, offsets[i][1]): mask[i] = 1
+            start_search = pos + 1
+    return mask
+
+class InferenceDatasetEN(Dataset):
+    def __init__(self, data_path, tokenizer, max_len=128, split='test', limit=None):
+        self.data = []
+        try:
+            with open(data_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    item = json.loads(line)
+                    if split is None or item.get('split') == split:
+                        self.data.append(item)
+        except Exception as e: print(e)
+        if limit: self.data = self.data[:limit]
+        self.tokenizer = tokenizer
+        print(f"Loaded {len(self.data)} samples")
+    def __len__(self): return len(self.data)
+    def __getitem__(self, idx):
+        item = self.data[idx]
+        encoding = self.tokenizer(item['comment'], truncation=True, max_length=128, padding='max_length')
+        return {'input_ids': torch.tensor(encoding['input_ids']), 'attention_mask': torch.tensor(encoding['attention_mask']), 'text': item['comment']}
+
+class RATeDInferenceEN:
+    def __init__(self, model_path, model_name="roberta-base"):
+        self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.model = HateXplainMultiTaskBIO.from_pretrained(model_name, num_labels=3, use_fusion=True)
+        try:
+            state_dict = torch.load(model_path, map_location=self.device)
+            new_state_dict = {}
+            for k, v in state_dict.items():
+                new_key = k
+                if k.startswith("bert."): new_key = k.replace("bert.", "roberta.")
+                elif not k.startswith("roberta.") and not any(x in k for x in ["classifier", "token_"]): new_key = "roberta." + k
+                if "class_classifier" in new_key: new_key = new_key.replace("class_classifier", "cls_classifier")
+                if new_key.startswith("roberta.cls_classifier"): new_key = new_key.replace("roberta.", "")
+                if new_key.startswith("roberta.token_classifier"): new_key = new_key.replace("roberta.", "")
+                new_state_dict[new_key] = v
+            if 'token_classifier.weight' in new_state_dict:
+                ckpt_size = new_state_dict['token_classifier.weight'].shape[0]
+                if ckpt_size != 3:
+                    import torch.nn as nn
+                    self.model.token_classifier = nn.Linear(self.model.config.hidden_size, ckpt_size)
+            self.model.load_state_dict(new_state_dict, strict=False)
+        except Exception as e: print(f"[WARN] Weight load: {e}")
+        self.model.to(self.device).eval()
+    
+    def predict(self, texts):
+        encodings = self.tokenizer(texts, max_length=128, padding='max_length', truncation=True, return_tensors='pt', return_offsets_mapping=True).to(self.device)
+        with torch.no_grad():
+            outputs = self.model(input_ids=encodings['input_ids'], attention_mask=encodings['attention_mask'])
+            cls_probs = torch.softmax(outputs['cls_logits'], dim=1).cpu().numpy()
+            token_probs = torch.softmax(outputs['token_logits'].cpu(), dim=2).numpy()
+            token_preds = torch.argmax(outputs['token_logits'].cpu(), dim=2).numpy()
+            offsets = encodings['offset_mapping'].cpu().numpy()
+            results = []
+            for i, text in enumerate(texts):
+                spans = []
+                curr = None
+                for j in range(len(token_preds[i])):
+                    p, (s, e) = token_preds[i][j], offsets[i][j]
+                    if s == e: continue
+                    if p > 0:
+                        if curr is None: curr = [s, e]
+                        elif s <= curr[1] + 1: curr[1] = e
+                        else: spans.append(text[curr[0]:curr[1]]); curr = [s, e]
+                    elif curr: spans.append(text[curr[0]:curr[1]]); curr = None
+                if curr: spans.append(text[curr[0]:curr[1]])
+                results.append({'confidence': 1.0 - cls_probs[i][1], 'spans': spans, 'token_mask': token_preds[i].tolist(), 'cls_label': int(np.argmax(cls_probs[i])), 'cls_probs': cls_probs[i].tolist(), 'token_probs': token_probs[i].tolist()})
+        return results
+
+# --- Judges ---
+ENGLISH_SLANG_KB = """
+LINGUISTIC CONTEXT & GUIDELINES:
+1. HATE: Targeted slurs, dehumanization (e.g., vermin, insects), or threats against protected groups (Race, Religion, Gender).
+2. OFFENSIVE: General profanity, aggressive insults (e.g., "fucking idiot", "trash"), and non-targeted slurs.
+3. NORMAL: Reclaimed slur usage in non-toxic contexts, emphatic swearing, or neutral identity mentions.
+"""
+
+class LocalJudgeEN:
+    def __init__(self, model_repo):
+        self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        self.tokenizer = AutoTokenizer.from_pretrained(model_repo, trust_remote_code=True)
+        self.tokenizer.pad_token = self.tokenizer.eos_token
+        self.tokenizer.padding_side = "left"
+        from transformers import AutoModelForCausalLM, BitsAndBytesConfig
+        bnb = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16, bnb_4bit_quant_type="nf4")
+        self.model = AutoModelForCausalLM.from_pretrained(model_repo, quantization_config=bnb, device_map={"": self.device})
+    
+    def clean_judge_output(self, raw, text=None):
+        import re
+        clean = raw.split("assistant\n")[-1].strip() if "assistant\n" in raw else raw
+        
+        # Try finding with prefix
+        lbl = re.search(r"LABEL:\s*(hate|offensive|normal)", clean, re.I)
+        if lbl:
+            label = lbl.group(1).lower()
+        else:
+            # Fallback: search for keywords in word boundaries
+            kw = re.search(r"\b(hate|offensive|normal)\b", clean, re.I)
+            label = kw.group(1).lower() if kw else "normal"
+            
+        spn = re.search(r"SPANS:\s*(.*)", clean, re.I)
+        spans_raw = spn.group(1).strip() if spn else ""
+        if not spans_raw or "NONE" in spans_raw.upper():
+            spans = []
+        else:
+            spans = [s.strip().strip('"\'') for s in spans_raw.split(',')]
+            
+        return label, [s for s in spans if 2 <= len(s) <= 120], False
+
+    def verify_batch(self, texts):
+        ins = f"""You are a content moderator for the HateXplain 3-class task.
+STRICT DEFINITIONS:
+- HATE: Targeted attack/dehumanization of protected groups (Race, Religion, etc.).
+- OFFENSIVE: General toxicity, insults (e.g., "idiot", "trash"), and profanity.
+- NORMAL: Safe content or non-insulting swearing.
+
+{ENGLISH_SLANG_KB}
+
+FORMAT:
+LABEL: <hate|offensive|normal>
+SPANS: <comma-separated minimal toxic phrases, or NONE>
+REASONING: <1 short sentence>"""
+        tmpl = "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
+        fmt = [tmpl.format(ins, t) for t in texts]
+        inputs = self.tokenizer(fmt, return_tensors="pt", padding=True, truncation=True, max_length=512).to(self.device)
+        with torch.no_grad():
+            outputs = self.model.generate(**inputs, max_new_tokens=128, do_sample=False, pad_token_id=self.tokenizer.pad_token_id, eos_token_id=self.tokenizer.eos_token_id)
+        return self.tokenizer.batch_decode(outputs[:, inputs.input_ids.shape[1]:], skip_special_tokens=True)
+
+class GeminiJudgeEN:
+    def __init__(self, model_name="gemini-2.5-flash-lite"):
+        load_dotenv(); genai.configure(api_key=os.environ.get("GOOGLE_API_KEY"))
+        self.model = genai.GenerativeModel(model_name)
+    def clean_judge_output(self, raw, text=None): return LocalJudgeEN.clean_judge_output(None, raw, text)
+    def _call(self, text):
+        prompt = f"Analyze toxicity (HATE, OFFENSIVE, NORMAL). {ENGLISH_SLANG_KB}\nOutput exactly 3 lines:\nLABEL: <label>\nSPANS: <spans>\nREASONING: <reason>\nText: {text}"
+        try:
+            res = self.model.generate_content(prompt, generation_config=genai.types.GenerationConfig(temperature=0.0))
+            return res.text.strip()
+        except: return "LABEL: normal\nSPANS: NONE"
+    def verify_batch(self, texts):
+        with ThreadPoolExecutor(max_workers=8) as ex: return list(ex.map(self._call, texts))
+
+def get_toxic_score(probs):
+    if not isinstance(probs, (list, np.ndarray)) or not probs: return 0.0
+    return float(probs[0] * 1.0 + probs[2] * 0.95) if len(probs) == 3 else float(probs[1]) if len(probs) == 2 else float(probs[0])
+
+class CascadedPipelineEN:
+    def __init__(self, rated, judge, safeguard=0.75, only_stage1=False, only_stage2=False):
+        self.rated, self.judge, self.safeguard = rated, judge, safeguard
+        self.only_stage1, self.only_stage2 = only_stage1, only_stage2
+        self.stats = {"judge_path": 0}
+
+    def process_batch(self, texts):
+        if self.only_stage2:
+            r_res = [{'cls_label': 1, 'confidence': 0.0, 'spans': [], 'token_mask': [0]*128, 'cls_probs': [0,1,0], 'token_probs': [[1,0]]*128}] * len(texts)
+            idx_verify, txt_verify = list(range(len(texts))), texts
+            results = [None] * len(texts)
+        else:
+            r_res = self.rated.predict(texts)
+            results, idx_verify, txt_verify = [None] * len(texts), [], []
+            for i, res in enumerate(r_res):
+                if not self.only_stage1 and (0.45 <= res['confidence'] <= 0.98): idx_verify.append(i); txt_verify.append(texts[i])
+                else: results[i] = {"label": LABELS_EN[res['cls_label']], "spans": res['spans'], "token_mask": res['token_mask'], "flow": "FAST_PATH", "confidence": res['confidence'], "cls_probs": res['cls_probs'], "token_probs": res['token_probs']}
+        
+        if idx_verify:
+            self.stats["judge_path"] += len(idx_verify)
+            j_outs = self.judge.verify_batch(txt_verify)
+            for k, idx in enumerate(idx_verify):
+                label, spans, _ = self.judge.clean_judge_output(j_outs[k], txt_verify[k])
+                if not self.only_stage2 and r_res[idx]['cls_label'] != 1 and r_res[idx]['confidence'] >= self.safeguard and label == "normal": label = LABELS_EN[r_res[idx]['cls_label']]
+                
+                if label == "hate": p, c = [1.0, 0, 0], 1.0
+                elif label == "offensive": p, c = [0, 0, 1.0], 0.95
+                else: p, c = [0, 1.0, 0], 0.01
+
+                m_j = build_span_token_mask(txt_verify[k], spans, self.rated.tokenizer)
+                m_r = r_res[idx]['token_mask'] if not self.only_stage2 else [0]*128
+                union = [1 if (m_j[m] or m_r[m]) else 0 for m in range(128)]
+                
+                t_p = []
+                for v in m_j: t_p.append([0.99, 0.01] if v < 0.5 else [0.01, 0.99])
+                results[idx] = {"label": label, "spans": spans, "token_mask": union, "flow": "JUDGE_PATH", "confidence": c, "cls_probs": p, "token_probs": t_p}
+        return results
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model_path", type=str, default="experiments/english/baseline/results/RATeD_E1_baseline/best_model.pth")
+    parser.add_argument("--hf_model", type=str, default="experiments/english/models/qwen2.5-7b-hatexplain-specialist-3class")
+    parser.add_argument("--provider", type=str, default="local")
+    parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--only_stage1", action="store_true")
+    parser.add_argument("--only_stage2", action="store_true")
+    args = parser.parse_args()
+
+    rated = RATeDInferenceEN(args.model_path)
+    judge = GeminiJudgeEN() if args.provider == "gemini" else LocalJudgeEN(args.hf_model)
+    pipe = CascadedPipelineEN(rated, judge, only_stage1=args.only_stage1, only_stage2=args.only_stage2)
+    
+    dataset = InferenceDatasetEN("experiments/english/data/hatexplain_prepared.jsonl", rated.tokenizer, split='test', limit=args.limit)
+    res = []
+    for batch in tqdm(DataLoader(dataset, batch_size=32)):
+        outs = pipe.process_batch(batch['text'])
+        for i, o in enumerate(outs):
+            gold = dataset.data[len(res)]
+            res.append({"id": gold['id'], "text": batch['text'][i], "gold_label": gold['label'].lower().replace('hatespeech', 'hate'), "pred_label": o['label'], "gold_spans": gold['unsafe_spans_indices'], "pred_spans": o['spans'], "pred_mask": o['token_mask'], "flow": o['flow'], "cls_probs": o['cls_probs'], "token_probs": o['token_probs']})
+    
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    sub = "only_stage1" if args.only_stage1 else "only_stage2" if args.only_stage2 else "cascaded"
+    out_dir = os.path.join(current_dir, "results", sub); os.makedirs(out_dir, exist_ok=True)
+    with open(os.path.join(out_dir, f"raw_{timestamp}.json"), 'w') as f: json.dump(res, f)
+
+    y_t = [0 if r['gold_label']=='hate' else 1 if r['gold_label']=='normal' else 2 for r in res]
+    y_p = [0 if r['pred_label']=='hate' else 1 if r['pred_label']=='normal' else 2 for r in res]
+    probs = [get_toxic_score(r['cls_probs']) for r in res]
+    
+    auroc = calculate_auroc([1 if v!=1 else 0 for v in y_t], probs)
+    bias = calculate_bias_metrics(load_bias_metadata_from_prepared("experiments/english/data/hatexplain_prepared.jsonl", len(y_t)), [1 if v!=1 else 0 for v in y_t], probs)
+    
+    from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
+    m = {'acc': accuracy_score(y_t, y_p), 'f1': f1_score(y_t, y_p, average='macro')}
+    rep = generate_report_string(f"RATeD-V E11 ({args.provider})", m, {'span_f1': 0}, confusion_matrix(y_t, y_p), auroc=auroc, bias_metrics=bias)
+    print(rep)
+    with open(os.path.join(out_dir, f"report_{timestamp}.log"), "w") as f: f.write(rep)
+
+if __name__ == "__main__": main()
