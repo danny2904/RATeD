@@ -93,3 +93,7 @@ experiments/vietnamese/proposed/analyze_errors.py
 experiments/vietnamese/proposed/config_loader.py
 experiments/vietnamese/proposed/model_multitask.py
 experiments/vietnamese/proposed/pipeline.py
+experiments\english\proposed\05_prepare_sft_data_en.py
+experiments\english\proposed\06_sft_qwen_hatexplain.py
+experiments\english\proposed\07_alpha_sweep_en.py
+experiments\english\proposed\08_generate_silver_rationales_en.py
