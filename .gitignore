@@ -77,5 +77,12 @@ upload_to_hf.ps1
 **/*_bak_v*.py
 
 # === SPECIFIC EXPERIMENT SCRIPTS TO IGNORE ===
+experiments/english/proposed/04_cascaded_verify_en.py
+experiments/english/proposed/04_cascaded_verify_en.pybackup
+experiments/english/proposed/04_cascaded_verify_en_bak_v1.py
+experiments/english/proposed/05_prepare_sft_data_en.py
+experiments/english/proposed/06_sft_qwen_hatexplain.py
+experiments/english/proposed/07_alpha_sweep_en.py
+experiments/english/proposed/08_generate_silver_rationales_en.py
 method.md
 experiments/english/ablation_study/
